@@ -1,0 +1,160 @@
+On the serial console, commands are acknowledged with the following codes:
+	!0: OK
+	!3: Bad command
+	!4: Command OK, but invalid parameter supplied
+	!5: I can't do that, Dave. (eg. SD SEI when the beam is off)
+
+The commands don't seem to be documented anywhere. Here are the ones I've been
+able to figure out. They do not seem to be case sensitive.
+
+Acceleration Voltage
+	get: ACC
+	set: ACC 10
+
+Contrast/Brightness
+	Auto: ACB ON
+	contrast get: SC
+	contrast set: SC 0..255
+	brightness get: SB
+	brightness set: SB 0..255
+
+CRT #1 menus
+	DFIS ON/OFF
+
+CRT #2 sample iterations
+	Default is 64 samples: MONI I64
+	More samples (better but slower): MONI I1024
+	Fewer samples (faster but noisy): MONI I3
+
+Emission Current
+	get current value (eg. 8.0): EMIS
+	get emission mode: AEC
+	set auto emission off: AEC OFF
+	set auto emission to Reset: AEC RST
+	set auto emission to constant: AEC CNST
+	plot emission current (8 iterations/second for 30 seconds): EMM I8 T30
+
+Focus
+	Wobbler: WBL ON/OFF
+	OL Coarse get: OC
+	OL Coarse set: OC ...
+	OL Fine get: OF
+	OL Fine set: OF ...
+	WD get: WD
+	WD set (also sets OL coarse): WD 1..25
+	Autofocus: CMB ON
+	Dynamic focus amplitude get: DA
+	Dynamic focus amplitude set: DA -128..127
+	(Not sure how to actually enable it programatically)
+
+Gun Alignment
+	get: GA
+	set: GA X15 Y-20
+	OL aperture get: OLAP
+	OL aperture set: OLAP 1..4
+	Degauss lenses: LC ALL
+
+Imaging
+	Current imaging mode: EM
+	Set upper SEI: EM SHR
+	Set lower SEI: EM SLM
+	Set alignment pattern: EM ALP
+	Image shift get: IS
+	Image shift set: IS X127 Y102
+	Freeze frame: FREZ ON/OFF
+	Integrate, then freeze: INTG
+	YZ Modulation: YZM ON/OFF
+	D-MAG (digital magnification?): DMG ON/OFF
+	IMS input type: IA1 ANA/DIG
+	Image Selector: IMS1
+		IMS1 SEI
+		IMS1 COM
+		IMS1 AUX
+		IMS1 TOP
+		Can be combined, eg. IMS1 SEI COM
+		Can't seem to set SEIL, but it can be selected from the EOS menu (be sure to turn on LOWER DETECTOR DEVICE switch on
+		console right of CRT #2)
+
+Magnification (Zoom)
+	get: MG
+	set: MG 20000
+	INST mag get: INST
+	INST mag set: INST ON/OFF
+
+PMT Link
+	PMT ON/OFF
+	Leave ON for normal imaging. Turn OFF if contrast is too dim (uncoated biological samples at low accel voltages).
+
+Probe Current
+	Probe Coarse get: CC
+	Probe Coarse set: CC 1..10
+	Probe Fine(!) get: CF
+	Probe Fine(!) set: CF ...
+
+Scan Modes
+	get current: SM
+	imaging: SM PIC
+	PIC reduce 2: SM RD2
+	PIC reduce 4: SM RD4
+	PIC reduce selected: SM RDC
+		Set the area in EOS menu 2 -> Position and Width
+	Horizontal line: SM LSP
+	Bull's eye (for alignment): SM BUP
+	Spot mode: SM SPT
+
+Scan Rates
+	get: SS
+	set FAST: SS TV
+	set 2x FAST: SS SR
+	set SLOW: SS S1..S3
+	set PHOTO: SS P1..P5
+	Photo speed get: PS
+	Photo speed select: PS P1..5
+
+Stigmatism Adjust
+	OL get: ST
+	OL set: ST X123 Y-5
+	CL get: STC
+	CL set: STC X100 Y72
+	Note that the stigmatism centering controls are analog and don't seem to allow programmatic adjustment.
+
+Video mode
+	VIDO ON/OFF
+	Note: if VIDO is OFF, the NTSC frame grabber on the PC will not be able to sync.
+
+Waveform mode
+	WFM ON/OFF
+
+Remap PF1-PF10
+	To remap, just type eg. PF1 [ANY COMMAND]. The default mappings are:
+	PF1 (basic display): PNU2
+	PF2 (Electron Optical System menu): EOS
+	PF3 (image processing): FIS
+	PF4 (Autofocus + Auto contrast/brightness): AUTO
+	PF5 (memory contents): MEMO
+	PF6 (Split screen frame buffer): DUAL
+	PF7 (Quad screen frame buffer): QUAD
+	PF8 (Degauss): LC ALL
+	PF9 (Autofocus, Autostig, Auto contrast/brightness): AFT,ASTG,ACB
+	PF10: MONI I64
+
+Miscellaneous weirdness
+	SEI Detector: SD OFF/SEI/REF
+	Should always be SEI. Not sure why you'd turn it off, and we have no reference detector.
+	Greybar test: TEST
+	Brightness histogram: HIST
+	CRT #2 annotation mode: PNU2 TEXT
+	(no idea how to actually enter annotations)
+	To get it back to normal: hit BREAK or PNU2 STATS
+	Greyscale Look Up Table editor: LUT
+	Read an arbitrary memory location: RD 00000
+	Write an arbitrary memory location (DANGEROUS!): WR 7F879 A1
+		You can temporarily set the acceleration voltage higher than 30kV by writing values to that memory location. This is used for DC
+		conditioning only. DO NOT USE IT FOR IMAGING AS IT CAN DAMAGE THE SEM! Possible values are:
+			A1: 32kV
+			A6: 33kV
+			AB: 34kV
+			B0: 35kV
+			B6: 36kV
+			C0: 38kV
+			C9: 40kV
