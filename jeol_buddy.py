@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 '''
 Implement the JEOL protocol for storing beam parameters. Errors are written to STDERR (not logged).
 '''
@@ -16,7 +16,6 @@ Implement the JEOL protocol for storing beam parameters. Errors are written to S
 #  * /dev/cu.UC-232AC
 #  * /dev/ttyAMA0 (Raspberry Pi)
 
-from __future__ import print_function
 import serial
 import sys
 import os
@@ -27,7 +26,7 @@ import argparse
 from time import sleep
 
 opts = {
-	'port': 		{ 'value': '/dev/ttyS0', 'help': 'serial port', 'type': str },
+	'port': 		{ 'value': '/dev/ttyS3', 'help': 'serial port', 'type': str },
 	'baudrate':		{ 'value': 2400, 'help': 'serial baud rate', 'type': int },
 	'databits':		{ 'value': 8, 'help': 'data bits', 'type': int },
 	'parity':		{ 'value': 'N', 'help': 'parity', 'type': str },
@@ -43,8 +42,6 @@ opts = {
 def get_terminal_width(margin=5):
 	'''
 	Return the current terminal width minus a nice margin.
-
-	In python 3.3+, use shutil.get_terminal_size() instead.
 	'''
 	if not sys.stdout.isatty():
 		return 80
@@ -75,7 +72,7 @@ class sem:
 					break
 			else:
 				break
-		return bytes(line)
+		return line.decode('utf-8').rstrip()
 
 	def send(self, cmd, safe=True):
 		''' 
@@ -92,9 +89,9 @@ class sem:
 			running 'SD SEI' when beam is off).
 
 		'''
-		self.port.write(str(cmd) + '\r')
+		self.port.write(str(str(cmd) + '\r').encode())
 		resp = self.readline()
-		if safe and resp[0:2] != "!0":
+		if safe and resp[0:2] != '!0':
 			raise RuntimeError("Command '{0}' failed ({1})".format(cmd, resp))
 
 		return resp
@@ -106,7 +103,7 @@ class sem:
 		resp = self.send(cmd, safe)[3:]
 		if resp[0:len(cmd)] != cmd:
 			raise RuntimeError("Sent {0} but got response {1}??".format(cmd, resp))
-		return resp[len(cmd)+1:-1]
+		return resp[len(cmd)+1:]
 
 	def get_current_state(self):
 		st = {}
@@ -125,7 +122,7 @@ class sem:
 		]
 
 		for cmd in cmds:
-			st[cmd] = self.get(cmd)
+			st[cmd] = self.get(cmd, safe=True)
 
 		return st
 
@@ -194,11 +191,57 @@ class sem:
 		print("No saved settings available.")
 		return False
 
+	def set_all_params(self):
+		''' Update SEM to use all saved microscope states. '''
+		if self.send("SD SEI", False) == "!0":
+			print("Please turn off the beam first.")
+			return
+
+		print("Are you sure you want to update the scope with all saved parameters?")
+
+	def alignment_mode(self, enable=True):
+		''' Set PF6 and PF7 to OL / CL alignment mode '''
+		if enable:
+			cmds = [
+				"PF6 EM SE1|SS TV|SC 200|STSW OL|WBL ON|LC ALL",
+				"PF7 SC 0|EM ALP|WBL OFF|SS S1|LC ALL|SC 150|STSW CL",
+				"EM SE1"
+			]
+			print("Setting alignment mode for PF6 / PF7")
+		else:
+			cmds = [
+				"PF6 EM SHR",
+				"PF7 EM SLM",
+				"EM SHR",
+				"WBL OFF"
+			]
+			print("Disabling alignment mode for PF6 / PF7")
+		for cmd in cmds:
+			self.send(cmd)
+
+	def key_remap(self):
+		''' Reset default PF key macros '''
+		cmds = [
+			"PF1 PNU2",		# PF key map: standard status
+			"PF2 EOS",      # EOS menu
+			"PF3 AEC CNST", # Constant current mode
+			"PF4 SS TV",    # Fast scan
+			"PF5 SS S2",    # Slow scan
+			"PF6 EM SHR",   # Upper SEI (or OL in align mode)
+			"PF7 EM SLM",   # Lower SEI (or CL in align mode)
+			"PF8 IS X0 Y0", # Re-zero image shift
+			"PF9 LC ALL",   # Lens degauss
+			"PF10 FEM OFF", # 150h warning off
+		]
+		print("Remapping PF keys")
+		for cmd in cmds:
+			self.send(cmd)
+
 	def safe_mode(self):
 		''' Reset the SEM to a known state. '''
 		cmds = [
 			"SS TV",		# Fast scan rate
-			"MONI I64", 	# 64 integrations for CRT #2
+			"MONI I64", 		# 64 integrations for CRT #2
 			"FREZ OFF",		# Unfreeze
 			"WBL OFF",		# Turn off the wobbler
 			"INST ON",		# Enable instant mag
@@ -212,13 +255,16 @@ class sem:
 			"IMS1 SEI",		# Upper SEI (IMS)
 			"EM SHR",		# Upper SEI (EM)
 			"AEC CNST",		# Constant emission mode
-			"IS X0 Y0", 	# Reset image shift to 0,0
+			"IS X0 Y0", 		# Reset image shift to 0,0
 			"YZM OFF",		# Disable YZ modulation
 			"IA1 ANA",		# Analog IMS input
-			"DFIS OFF", 	# No menus on CRT #1
+			"DFIS OFF", 		# No menus on CRT #1
 			"DA 0",			# Minimum dynamic focus
 			"WFM OFF",		# Waveform mode off
-			"PNU2 STAT",	# CRT2 standard display
+			"PNU2 STAT",		# CRT2 standard display
+			"FEM OFF",		# Turn off 150h warning
+			"FLL Milly",	# Left annotation
+			"FLR Milly",    # Right annotation
 		]
 
 		print("Setting safe mode", end="")
@@ -227,6 +273,8 @@ class sem:
 			sys.stdout.flush()
 			self.send(cmd)
 		print("")
+
+		self.key_remap()
 
 		# if beam is on:
 		# "SD SEI",		# SEI detector enabled
@@ -290,22 +338,44 @@ if __name__ == '__main__':
 	)
 
 	jeol = sem(ser, ARGS.config)
+	align = False
 
 	# Until ^C
 	while True:
 		try:
 			if ARGS.interactive:
-				cmd = raw_input('> ').rstrip()
-				if cmd == "safemode":
+				cmd = input('> ').rstrip()
+				if cmd in ["r", "rescue"]:
 					jeol.safe_mode()
-				elif cmd == "status":
+				elif cmd in ["", "status"]:
 					print(jeol.get_current_state())
-				elif cmd == "save":
+				elif cmd in ["s", "save"]:
 					jeol.save_params()
-				elif cmd == "load":
+				elif cmd in ["l", "load"]:
 					jeol.load_params()
-				elif cmd == "set":
+				elif cmd in ["u", "update"]:
 					jeol.set_params()
+				elif cmd in ["k", "keys"]:
+					jeol.key_remap()
+				elif cmd in ["align"]:
+					align = not(align)
+					jeol.alignment_mode(align)
+				elif cmd in ["update_all"]:
+					jeol.set_all_params()
+				elif cmd in ["help", "h", "?"]:
+					print("""
+jeol buddy has got your back!
+
+       status (enter): current scope parameters
+           update (u): apply known parameters to the scope at current ACC and probe
+             save (s): save all states to disk
+             load (l): load states from disk
+           rescue (r): try to reset scope to "safe mode"
+             keys (k): reset PF key macros
+
+                align: toggle OL / CL alignment mode on PF6 / PF7
+           update_all: apply all known parameters to the scope (used after power loss)
+""")
 				else:
 					print(jeol.send(cmd, safe=False))
 
